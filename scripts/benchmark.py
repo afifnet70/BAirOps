@@ -1,6 +1,7 @@
 """Latency / throughput benchmark of the deployed API (results for the paper).
 
-  python scripts/benchmark.py --url https://<user>-bairops.hf.space --n 200 --concurrency 8
+  docker run -p 7860:7860 -e MLFLOW_TRACKING_URI=... -e MLFLOW_TRACKING_USERNAME=... -e MLFLOW_TRACKING_PASSWORD=... ghcr.io/afifnet70/bairops
+  python scripts/benchmark.py --url http://localhost:7860 --n 200 --concurrency 8
 """
 import argparse
 import concurrent.futures as cf

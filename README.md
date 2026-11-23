@@ -10,12 +10,13 @@ Open-Meteo API ──► ingestion (retry/back-off) ──► shared feature pip
       │        GitHub (code) ── DVC (data versions, DagsHub) ── MLflow registry ──┘ (production version)
       │             │
       │             ├─ CI      : tests + Docker build on every push
-      │             ├─ CD      : deploy API + dashboard to Hugging Face Spaces
+      │             ├─ CD      : container image -> GitHub Container Registry
+      │             ├─ Serve   : hourly batch forecasts -> dashboard + JSON API on GitHub Pages
       │             ├─ Monitor : daily live accuracy + data drift ──► alert issue ──► retrain
       │             ├─ Retrain : weekly; new data -> candidate -> quality gate -> promote / keep
       │             └─ Rollback: one click, any registered version
       ▼
- FastAPI service (/forecast, /forecast/all, /predict, /health, /model-info) + city dashboard
+ Dashboard + JSON API (GitHub Pages, refreshed hourly)  ·  FastAPI container for on-demand serving
 ```
 
 | MLOps capability | Implementation (free) | Where |
@@ -25,78 +26,49 @@ Open-Meteo API ──► ingestion (retry/back-off) ──► shared feature pip
 | Model registry + versioning | MLflow model registry, tag `stage=production` | `registry.py` |
 | Reproducible training | `params.yaml` + shared code + pinned versions | `src/bairops/train.py` |
 | Continuous integration | GitHub Actions: unit tests, Docker build | `.github/workflows/ci.yml` |
-| Continuous deployment | GitHub Actions → Hugging Face Docker Space | `deploy.yml`, `scripts/deploy_space.py` |
+| Continuous deployment | GitHub Actions → GitHub Container Registry (image) + GitHub Pages (site) | `deploy.yml`, `pages.yml` |
 | Containerisation | multi-stage Dockerfile | `Dockerfile` |
-| Serving | FastAPI + dashboard, model pulled from registry | `app/` |
+| Serving | hourly batch inference → static dashboard + JSON API; FastAPI container for real-time requests; model always pulled from the registry | `scripts/publish_forecasts.py`, `app/` |
 | Continuous training | weekly retrain with promotion gate | `retrain.yml`, `scripts/retrain.py` |
 | Monitoring | live RMSE vs observed AQI + PSI drift, auto issue + retrain | `monitor.yml`, `scripts/monitor.py` |
 | Rollback | restore any registry version | `rollback.yml`, `scripts/rollback.py` |
 
 ---
 
-## Setup (one time, about 30 minutes, no cost)
+## Setup (one time, no cost)
 
-### 1. Create two free accounts and tokens
-1. **DagsHub** (<https://dagshub.com>): *Sign up with GitHub* → **Create → New Repository → Connect a repository →
-   GitHub** → select **this repository** → *Connect* (keep the same repository name). Then **avatar → Your Settings → Tokens** and copy your token.
-2. **Hugging Face** (<https://huggingface.co>): sign up → **Settings → Access Tokens → Create new token**,
-   type **Write** → copy it.
+1. **DagsHub** (<https://dagshub.com>): sign up with GitHub → **Create → New Repository → Connect a repository →
+   GitHub** → select this repository (same name) → copy your token (**avatar → Your Settings → Tokens**).
+2. **GitHub secrets** (repo → Settings → Secrets and variables → Actions): `DAGSHUB_USER`, `DAGSHUB_TOKEN`.
+3. **Release `v1-assets`** with the dataset zip and the Phase-1 model `bairops_H24.joblib`.
+4. **Actions → Bootstrap → Run workflow** (versions the data with DVC, registers the model as v1 = production).
+5. **GitHub Pages**: repo → **Settings → Pages → Source: GitHub Actions**.
+6. **Actions → Publish forecasts → Run workflow** → the site appears at `https://<user>.github.io/<repo>/`
+   and is then refreshed every hour automatically.
 
-### 2. Put this code in your GitHub repository
+Live endpoints (static JSON API): `api/forecasts.json`, `api/city/<city>.json`, `api/model-info.json`, `api/health.json`.
+Real-time API (optional, e.g. for latency tests):
 ```bash
-git clone https://github.com/<your-github-user>/<your-repo>.git
-cd <your-repo>
-# copy ALL files of this folder here (including the hidden .github, .dvc, .gitignore, .dockerignore, .dvcignore)
-git add -A
-git commit -m "BAirOps MLOps framework"
-git push
+docker run -p 7860:7860 -e MLFLOW_TRACKING_URI=https://dagshub.com/<user>/<repo>.mlflow \
+  -e MLFLOW_TRACKING_USERNAME=<user> -e MLFLOW_TRACKING_PASSWORD=<token> ghcr.io/<user>/bairops
+# open http://localhost:7860  (dashboard)  and  http://localhost:7860/docs  (API)
 ```
-The **CI** workflow starts automatically (tab **Actions**). It should finish green.
-
-### 3. Add 4 secrets
-GitHub repo → **Settings → Secrets and variables → Actions → New repository secret**:
-
-| Name | Value |
-|---|---|
-| `DAGSHUB_USER` | your DagsHub username |
-| `DAGSHUB_TOKEN` | the DagsHub token |
-| `HF_TOKEN` | the Hugging Face write token |
-| `HF_SPACE` | `<your-hf-username>/bairops` |
-
-### 4. Upload the dataset and the Phase-1 model as a GitHub Release
-GitHub repo → **Releases → Draft a new release** → tag **`v1-assets`** → attach:
-* the dataset zip (`Bangladesh_Air_Quality_Index_AQI_Dataset_2000_2...zip`)
-* `bairops_H24.joblib` (from the Phase-1 Colab output, folder `models/`)
-
-→ **Publish release**.
-
-### 5. Run the Bootstrap workflow (once)
-**Actions → Bootstrap → Run workflow**. It (a) versions the dataset with DVC on DagsHub, (b) registers the
-Phase-1 stacked ensemble as **`bairops-stacking` v1 = production** in MLflow, (c) deploys the app.
-
-### 6. Open the live system
-`https://huggingface.co/spaces/<your-hf-username>/bairops` (first build ≈ 10 min).
-Dashboard at `/`, interactive API docs at `/docs`, status at `/health`, model details at `/model-info`.
-
-That's it — monitoring runs **daily**, retraining **weekly**, and both can be started by hand in **Actions**.
 
 ---
 
 ## Everyday operation
 | Want to… | Do |
 |---|---|
-| change code | push to `main` → CI → automatic deploy |
+| change code | push to `main` → CI → new image + site refresh |
 | retrain now | Actions → **Retrain** → Run workflow (≈1–2 h; promotes only if better) |
 | check live accuracy | Actions → **Monitor** → Run workflow; history in `monitoring/history.csv` |
-| roll back | Actions → **Rollback** → Run workflow (empty = previous version) |
+| roll back | Actions → **Rollback** → Run workflow (empty = previous version); the site switches within minutes |
 | see experiments / versions | DagsHub repo → **Experiments** and **Models** tabs |
 
-The free Hugging Face Space sleeps after 48 h without visitors and wakes on the next visit (~1 min).
-
 ## Experiments for the paper
-1. **Latency/throughput**: `python scripts/benchmark.py --url https://<hf-user>-bairops.hf.space --n 200 --concurrency 8`
+1. **Latency/throughput**: start the container (above), then `python scripts/benchmark.py --url http://localhost:7860 --n 200 --concurrency 8`
 2. **Continuous training**: run *Retrain*; the job summary shows candidate vs production on the newest 60 unseen days and the decision.
-3. **Rollback**: after a v2 exists, run *Rollback* and show `/model-info` switching back to v1.
+3. **Rollback**: after a v2 exists, run *Rollback* and show `api/model-info.json` switching back to v1.
 4. **Live monitoring**: after 2+ weeks, plot `monitoring/history.csv` (live RMSE, PSI, alerts).
 
 ## Local development
@@ -111,9 +83,10 @@ BAIROPS_MODEL_PATH=path/to/bairops_H24.joblib PYTHONPATH=src:. uvicorn app.main:
 params.yaml              all settings (data, features, training, promotion gate, monitoring)
 src/bairops/             shared library: data, live ingestion, features, metrics, model, training, registry, drift
 app/                     FastAPI service + dashboard
-scripts/                 register_model, retrain, monitor, rollback, deploy_space, benchmark
+scripts/                 register_model, publish_forecasts, retrain, monitor, rollback, benchmark
+site_template/           static dashboard published to GitHub Pages
 tests/                   unit + API tests (run in CI)
-.github/workflows/       ci, deploy, bootstrap, retrain, monitor, rollback
+.github/workflows/       ci, deploy, pages, bootstrap, retrain, monitor, rollback
 Dockerfile               multi-stage serving image
 ```
 
