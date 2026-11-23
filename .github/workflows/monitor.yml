@@ -1,0 +1,43 @@
+# Daily monitoring: live accuracy of the production model + data drift. Alerts open an issue
+# and trigger retraining automatically.
+name: Monitor
+on:
+  schedule:
+    - cron: "23 0 * * *"         # every day 06:23 Bangladesh time
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+env:
+  MLFLOW_TRACKING_URI: https://dagshub.com/${{ secrets.DAGSHUB_USER }}/${{ github.event.repository.name }}.mlflow
+  MLFLOW_TRACKING_USERNAME: ${{ secrets.DAGSHUB_USER }}
+  MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.13", cache: pip}
+      - run: pip install -r requirements.txt
+      - name: Evaluate production model on live data
+        id: mon
+        run: python scripts/monitor.py
+      - name: Save monitoring history
+        run: |
+          git config user.name "bairops-bot"; git config user.email "bairops-bot@users.noreply.github.com"
+          git add monitoring/
+          git commit -m "monitoring: $(date -u +%F)" || echo "nothing to commit"
+          git pull --rebase && git push
+      - name: Alert -> open issue + trigger retraining
+        if: steps.mon.outputs.alert == 'true'
+        env: {GH_TOKEN: "${{ github.token }}"}
+        run: |
+          gh issue create --title "BAirOps alert $(date -u +%F): performance or drift threshold crossed" \
+            --body "$(cat monitoring/latest.json)"
+          gh workflow run retrain.yml

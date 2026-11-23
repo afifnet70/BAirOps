@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BAirOps — Air quality forecast for Bangladesh</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root { --ink:#1d1d1b; --ink2:#5f5e5a; --line:#e6e5e0; --bg:#fafaf7; --card:#fff; --blue:#2a78d6; --orange:#eb6834; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color:var(--ink); background:var(--bg); }
+  header { display:flex; flex-wrap:wrap; gap:12px; align-items:center; padding:16px 24px; border-bottom:1px solid var(--line); background:var(--card); }
+  header h1 { font-size:20px; font-weight:600; margin:0; }
+  header .sub { color:var(--ink2); font-size:13px; }
+  header .grow { flex:1; }
+  select { font-size:15px; padding:6px 10px; border:1px solid #cfcdc4; border-radius:8px; background:#fff; }
+  main { max-width:1100px; margin:0 auto; padding:20px 24px 40px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  .label { color:var(--ink2); font-size:13px; }
+  .big { font-size:32px; font-weight:600; margin:4px 0; }
+  .pill { display:inline-block; font-size:12px; padding:3px 10px; border-radius:999px; font-weight:500; }
+  .chartbox { margin-top:16px; height:320px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); }
+  th { color:var(--ink2); font-weight:500; }
+  td.num { text-align:right; font-variant-numeric: tabular-nums; }
+  tr.click { cursor:pointer; } tr.click:hover { background:#f3f2ee; }
+  h2 { font-size:16px; font-weight:600; margin:24px 0 8px; }
+  footer { color:var(--ink2); font-size:12px; margin-top:24px; }
+  .note { color:var(--ink2); font-size:13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>BAirOps</h1><span class="sub">24-hour air-quality forecast for Bangladesh</span>
+  <span class="grow"></span>
+  <label class="label" for="city">City</label>
+  <select id="city"></select>
+</header>
+<main>
+  <div id="status" class="note">Loading forecasts…</div>
+  <div class="cards">
+    <div class="card"><div class="label">Now (observed AQI)</div><div class="big" id="now">–</div><span class="pill" id="nowcat"></span><div class="note" id="nowtime"></div></div>
+    <div class="card"><div class="label">Forecast, 24 h ahead</div><div class="big" id="fc">–</div><span class="pill" id="fccat"></span><div class="note" id="fctime"></div></div>
+    <div class="card"><div class="label">90% prediction interval</div><div class="big" id="pi">–</div><div class="note" id="model"></div></div>
+  </div>
+  <div class="card chartbox"><canvas id="chart"></canvas></div>
+
+  <h2>All cities — tomorrow at this hour</h2>
+  <div class="card"><table><thead><tr><th>City</th><th class="num">Now</th><th class="num">Forecast</th><th>Category</th><th class="num">90% interval</th></tr></thead><tbody id="tbl"></tbody></table></div>
+  <footer id="foot"></footer>
+</main>
+<script>
+const COLORS = {"Good":["#e3f4e8","#1d6b35"],"Moderate":["#fdf3d0","#7a5a00"],
+  "Unhealthy for sensitive groups":["#fde6d6","#8a3b0b"],"Unhealthy":["#fbdada","#8f1d1d"],
+  "Very unhealthy":["#eee0f7","#5a2a82"],"Hazardous":["#f1dede","#5c0f0f"]};
+let chart = null, all = [];
+const $ = id => document.getElementById(id);
+function pill(el, cat){ const c = COLORS[cat] || ["#eee","#333"]; el.textContent = cat; el.style.background=c[0]; el.style.color=c[1]; }
+
+async function getJSON(url){ const r = await fetch(url); if(!r.ok) throw new Error(r.status); return r.json(); }
+
+async function showCity(name){
+  const f = await getJSON('/forecast?city=' + encodeURIComponent(name));
+  $('now').textContent = Math.round(f.aqi_now); pill($('nowcat'), f.category_now);
+  $('nowtime').textContent = 'at ' + f.issued_at_local.slice(0,16) + ' (BD time)';
+  $('fc').textContent = Math.round(f.aqi_forecast); pill($('fccat'), f.category_forecast);
+  $('fctime').textContent = 'for ' + f.target_time_local.slice(0,16) + ' (BD time)';
+  $('pi').textContent = Math.round(f.interval_90[0]) + '–' + Math.round(f.interval_90[1]);
+  $('model').textContent = 'Stacked ensemble v' + f.model_version + ' · ' + f.season;
+  const labels = f.history_7d.map(h => h.t.slice(5,16)).concat([f.target_time_local.slice(5,16)]);
+  const obs = f.history_7d.map(h => h.aqi).concat([null]);
+  const fc = f.history_7d.map((h,i) => i === f.history_7d.length-1 ? h.aqi : null).concat([f.aqi_forecast]);
+  const data = {labels, datasets:[
+    {label:'Observed AQI (last 7 days)', data:obs, borderColor:'#2a78d6', borderWidth:2, pointRadius:0, tension:0.2},
+    {label:'Forecast (+24 h)', data:fc, borderColor:'#eb6834', borderWidth:2, borderDash:[6,4], pointRadius:[...fc.map((v,i)=> i===fc.length-1?5:0)], spanGaps:true}]};
+  if(chart) chart.destroy();
+  chart = new Chart($('chart'), {type:'line', data, options:{maintainAspectRatio:false, interaction:{mode:'index', intersect:false},
+    scales:{x:{ticks:{maxTicksLimit:8}}, y:{title:{display:true, text:'US AQI'}, beginAtZero:true}}, plugins:{legend:{position:'top'}}}});
+}
+
+function renderTable(){
+  $('tbl').innerHTML = '';
+  for(const f of all){
+    const tr = document.createElement('tr'); tr.className = 'click';
+    tr.innerHTML = `<td>${f.city}</td><td class="num">${Math.round(f.aqi_now)}</td><td class="num"><b>${Math.round(f.aqi_forecast)}</b></td><td></td><td class="num">${Math.round(f.interval_90[0])}–${Math.round(f.interval_90[1])}</td>`;
+    const sp = document.createElement('span'); sp.className='pill'; pill(sp, f.category_forecast); tr.children[3].appendChild(sp);
+    tr.onclick = () => { $('city').value = f.city; showCity(f.city); window.scrollTo({top:0, behavior:'smooth'}); };
+    $('tbl').appendChild(tr);
+  }
+}
+
+async function init(){
+  try {
+    const cities = await getJSON('/cities');
+    $('city').innerHTML = cities.map(c => `<option${c==='Dhaka'?' selected':''}>${c}</option>`).join('');
+    $('city').onchange = e => showCity(e.target.value);
+    all = await getJSON('/forecast/all');
+    renderTable();
+    await showCity($('city').value);
+    const h = await getJSON('/health');
+    $('status').textContent = '';
+    $('foot').textContent = `Model v${h.model_version} from the MLflow registry · data: Open-Meteo (CAMS), refreshed hourly · last update ${h.last_refresh_utc} UTC · API docs: /docs`;
+  } catch(e) {
+    $('status').textContent = 'Forecasts are being prepared (the service may have just started). Retrying in 20 s…';
+    setTimeout(init, 20000);
+  }
+}
+init();
+</script>
+</body>
+</html>

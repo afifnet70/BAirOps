@@ -1,0 +1,31 @@
+# Continuous integration: tests + Docker build on every push / pull request.
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.13", cache: pip}
+      - run: pip install -r requirements.txt
+      - name: Syntax check
+        run: python -m compileall -q src app scripts tests
+      - name: Unit tests
+        run: pytest -q
+        env: {PYTHONPATH: "src:."}
+
+  docker:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build serving image
+        run: docker build -t bairops:${{ github.sha }} .
+      - name: Smoke-test the image (imports + model code)
+        run: docker run --rm bairops:${{ github.sha }} python -c "import app.service, bairops.model; print('image OK')"

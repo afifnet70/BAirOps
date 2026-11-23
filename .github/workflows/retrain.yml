@@ -1,0 +1,53 @@
+# Continuous training: weekly (and on monitoring alerts) fetch new data, retrain the stacked ensemble,
+# promote it only if it beats production on the newest unseen days, then reload the live service.
+name: Retrain
+on:
+  schedule:
+    - cron: "17 21 * * 0"        # every Monday 03:17 Bangladesh time
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency: {group: retrain, cancel-in-progress: false}
+
+env:
+  MLFLOW_TRACKING_URI: https://dagshub.com/${{ secrets.DAGSHUB_USER }}/${{ github.event.repository.name }}.mlflow
+  MLFLOW_TRACKING_USERNAME: ${{ secrets.DAGSHUB_USER }}
+  MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+  HF_TOKEN: ${{ secrets.HF_TOKEN }}
+  HF_SPACE: ${{ secrets.HF_SPACE }}
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.13", cache: pip}
+      - run: pip install -r requirements.txt
+      - name: Pull versioned data (DVC)
+        run: |
+          dvc remote modify origin --local auth basic
+          dvc remote modify origin --local user "${{ secrets.DAGSHUB_USER }}"
+          dvc remote modify origin --local password "${{ secrets.DAGSHUB_TOKEN }}"
+          dvc pull
+      - name: Fetch new data, train candidate, quality gate
+        id: rt
+        run: python scripts/retrain.py
+      - name: Version the new data (DVC)
+        if: always() && hashFiles('data/raw/updates.csv') != ''
+        run: |
+          dvc add data/raw/updates.csv
+          dvc push
+          git config user.name "bairops-bot"; git config user.email "bairops-bot@users.noreply.github.com"
+          git add data/raw/updates.csv.dvc data/raw/.gitignore
+          git commit -m "data: new hours up to $(date -u +%F) (retrain)" || echo "nothing to commit"
+          git pull --rebase && git push
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: retrain-report, path: reports/}
+      - name: Reload the live service with the new production model
+        if: steps.rt.outputs.promoted == 'true'
+        run: python scripts/deploy_space.py --restart
