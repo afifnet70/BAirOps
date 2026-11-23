@@ -54,6 +54,23 @@ row = {"date": pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%d %H:%M"), "model_ver
        "live_Category_Acc_%": round(live["Category_Acc_%"], 2), "reference_test_RMSE": round(ref_test_rmse, 3),
        "psi_aqi": round(drift["psi_aqi"], 4), "psi_pm2_5": round(drift["psi_pm2_5"], 4),
        "alert_performance": bool(alert_perf), "alert_drift": bool(alert_drift)}
+# per-city live evaluation + the full backtest (used for the paper's live demonstration)
+lo, hi = model.interval(pred)
+bt = meta[win][["city_name", "issue_time", "target_time"]].reset_index(drop=True)
+bt["observed"], bt["predicted"], bt["pi_low"], bt["pi_high"] = y[win].values, pred, lo, hi
+bt["persistence"] = meta[win]["aqi_now"].values
+bt.round(2).to_csv("monitoring/backtest_latest.csv", index=False)
+rows_c = []
+for c, g in bt.groupby("city_name"):
+    m_ = metrics(g["observed"], g["predicted"])
+    rows_c.append({"city": c, "n": len(g), "RMSE": round(m_["RMSE"], 3), "MAE": round(m_["MAE"], 3),
+                   "Bias": round(m_["Bias"], 3), "Category_Acc_%": round(m_["Category_Acc_%"], 1),
+                   "persistence_RMSE": round(metrics(g["observed"], g["persistence"])["RMSE"], 3),
+                   "PI90_coverage_%": round(100 * float(((g["observed"] >= g["pi_low"]) & (g["observed"] <= g["pi_high"])).mean()), 1)})
+pd.DataFrame(rows_c).to_csv("monitoring/latest_by_city.csv", index=False)
+live_persist = metrics(bt["observed"], bt["persistence"])
+row["live_persistence_RMSE"] = round(live_persist["RMSE"], 3)
+
 hist_path = "monitoring/history.csv"
 hist = pd.read_csv(hist_path) if os.path.exists(hist_path) and os.path.getsize(hist_path) > 0 else pd.DataFrame()
 pd.concat([hist, pd.DataFrame([row])], ignore_index=True).to_csv(hist_path, index=False)
