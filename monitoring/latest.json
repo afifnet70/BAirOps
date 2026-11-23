@@ -1,0 +1,16 @@
+{
+  "date": "2026-11-23 17:31",
+  "model_version": "1",
+  "window_end": "2026-11-23 17:00:00",
+  "n_forecasts": 5040,
+  "live_RMSE": 30.953,
+  "live_MAE": 22.414,
+  "live_R2": 0.7682,
+  "live_Category_Acc_%": 62.88,
+  "reference_test_RMSE": 16.278,
+  "psi_aqi": 0.9809,
+  "psi_pm2_5": 0.5541,
+  "alert_performance": true,
+  "alert_drift": true,
+  "live_persistence_RMSE": 43.035
+}
