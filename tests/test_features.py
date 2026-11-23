@@ -37,3 +37,9 @@ def test_inference_keeps_latest_hour(data):
 
 def test_seasons():
     assert list(bd_season([1, 4, 7, 10, 12])) == [0, 1, 2, 3, 0]
+
+
+def test_all_64_districts_covered():
+    from bairops.cities import CITIES, DISTRICTS
+    assert len(DISTRICTS) == len(set(DISTRICTS)) == 64
+    assert all(20.5 < c["lat"] < 26.7 and 88.0 < c["lon"] < 92.7 for c in CITIES)

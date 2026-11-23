@@ -9,7 +9,7 @@ import pandas as pd
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from bairops.cities import CITIES, CITY_BY_NAME  # noqa: E402
+from bairops.cities import CITIES, CITY_BY_ID, CITY_BY_NAME  # noqa: E402
 from bairops.config import PARAMS  # noqa: E402
 from bairops.data import clean  # noqa: E402
 from bairops.features import SEASON_NAMES, build_features  # noqa: E402
@@ -85,8 +85,11 @@ class Service:
         fc, hist = {}, {}
         for i, r in ml.iterrows():
             name = r["city_name"]
+            info = CITY_BY_ID.get(int(r["city_id"]), {})
             fc[name.lower()] = {
-                "city": name, "issued_at_utc": str(r["issue_time"]),
+                "city": name, "district": info.get("district"),
+                "lat": info.get("lat"), "lon": info.get("lon"),
+                "issued_at_utc": str(r["issue_time"]),
                 "issued_at_local": str(r["issue_time"] + pd.Timedelta(hours=TZ)),
                 "target_time_utc": str(r["target_time"]),
                 "target_time_local": str(r["target_time"] + pd.Timedelta(hours=TZ)),

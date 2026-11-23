@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BAirOps — Air quality forecast for Bangladesh</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   :root { --ink:#1d1d1b; --ink2:#5f5e5a; --line:#e6e5e0; --bg:#fafaf7; --card:#fff; --blue:#2a78d6; --orange:#eb6834; }
@@ -26,6 +28,16 @@
   th { color:var(--ink2); font-weight:500; }
   td.num { text-align:right; font-variant-numeric: tabular-nums; }
   tr.click { cursor:pointer; } tr.click:hover { background:#f3f2ee; }
+  .maphead { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:10px; }
+  .maphead b { font-size:15px; } .maphead .grow { flex:1; }
+  .seg button { font-size:13px; padding:5px 12px; border:1px solid #cfcdc4; background:#fff; cursor:pointer; }
+  .seg button:first-child { border-radius:8px 0 0 8px; } .seg button:last-child { border-radius:0 8px 8px 0; border-left:none; }
+  .seg button.on { background:#1d1d1b; color:#fff; border-color:#1d1d1b; }
+  #map { height:560px; border-radius:10px; }
+  .aqm { display:flex; align-items:center; justify-content:center; border-radius:50%; font:600 12px system-ui, sans-serif;
+         border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.35); }
+  .legend { display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; font-size:12px; color:var(--ink2); }
+  .legend span { display:inline-flex; align-items:center; gap:5px; } .legend i { width:12px; height:12px; border-radius:50%; display:inline-block; }
   h2 { font-size:16px; font-weight:600; margin:24px 0 8px; }
   footer { color:var(--ink2); font-size:12px; margin-top:24px; }
   .note { color:var(--ink2); font-size:13px; }
@@ -46,8 +58,15 @@
     <div class="card"><div class="label">90% prediction interval</div><div class="big" id="pi">–</div><div class="note" id="model"></div></div>
   </div>
   <div class="card chartbox"><canvas id="chart"></canvas></div>
+  <div class="card" style="margin-top:16px">
+    <div class="maphead"><b>Air-quality map of Bangladesh</b><span class="note" id="mapnote"></span><span class="grow"></span>
+      <label class="note"><input type="checkbox" id="onlyDist"> District headquarters only</label>
+      <span class="seg"><button id="mNow">Now</button><button id="mFc" class="on">Tomorrow</button></span></div>
+    <div id="map"></div>
+    <div class="legend" id="legend"></div>
+  </div>
 
-  <h2>All cities — tomorrow at this hour</h2>
+  <h2>All locations — tomorrow at this hour</h2>
   <div class="card"><table><thead><tr><th>City</th><th class="num">Now</th><th class="num">Forecast</th><th>Category</th><th class="num">90% interval</th></tr></thead><tbody id="tbl"></tbody></table></div>
   <footer id="foot"></footer>
 </main>
@@ -81,6 +100,41 @@ async function showCity(name){
     scales:{x:{ticks:{maxTicksLimit:8}}, y:{title:{display:true, text:'US AQI'}, beginAtZero:true}}, plugins:{legend:{position:'top'}}}});
 }
 
+
+const AQI_STD = {"Good":["#00e400","#0b3d0b"],"Moderate":["#ffff00","#4a4a00"],"Unhealthy for sensitive groups":["#ff7e00","#ffffff"],
+  "Unhealthy":["#ff0000","#ffffff"],"Very unhealthy":["#8f3f97","#ffffff"],"Hazardous":["#7e0023","#ffffff"]};
+let lmap = null, mlayer = null, mapMode = 'fc', fitted = false;
+function renderMap(){
+  if(!window.L || !document.getElementById('map')) return;
+  if(!lmap){
+    lmap = L.map('map', {zoomSnap:0.25, scrollWheelZoom:false}).setView([23.7, 90.35], 7);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {maxZoom: 12, attribution: '&copy; OpenStreetMap contributors · AQI: CAMS via Open-Meteo'}).addTo(lmap);
+    mlayer = L.layerGroup().addTo(lmap);
+    $('legend').innerHTML = Object.entries(AQI_STD).map(([k,v]) => `<span><i style="background:${v[0]}"></i>${k}</span>`).join('');
+  }
+  mlayer.clearLayers();
+  const only = $('onlyDist').checked, pts = [];
+  for(const f of all){
+    if(f.lat == null || (only && !f.district)) continue;
+    const v = mapMode === 'now' ? f.aqi_now : f.aqi_forecast;
+    const cat = mapMode === 'now' ? f.category_now : f.category_forecast;
+    const c = AQI_STD[cat] || ['#999','#fff'];
+    const sz = f.district ? 34 : 26;
+    const icon = L.divIcon({className:'', iconSize:[sz,sz], iconAnchor:[sz/2,sz/2],
+      html:`<div class="aqm" style="width:${sz}px;height:${sz}px;background:${c[0]};color:${c[1]};font-size:${f.district?12:10}px">${Math.round(v)}</div>`});
+    const label = f.city + (f.district && f.district !== f.city ? ` (${f.district} district)` : '');
+    const m = L.marker([f.lat, f.lon], {icon, zIndexOffset: Math.round(v)})
+      .bindTooltip(`<b>${label}</b><br>Now: ${Math.round(f.aqi_now)} · ${f.category_now}<br>Tomorrow: ${Math.round(f.aqi_forecast)} · ${f.category_forecast}`);
+    m.on('click', () => { $('city').value = f.city; showCity(f.city); window.scrollTo({top:0, behavior:'smooth'}); });
+    mlayer.addLayer(m); pts.push([f.lat, f.lon]);
+  }
+  if(!fitted && pts.length){ lmap.fitBounds(pts, {padding:[20,20]}); fitted = true; }
+  const n = all.filter(f => f.district).length;
+  $('mapnote').textContent = `${mapMode === 'now' ? 'Current AQI' : '24-h forecast'} · ${n} district headquarters + ${all.length - n} other locations`;
+}
+function setMapMode(m){ mapMode = m; $('mNow').classList.toggle('on', m==='now'); $('mFc').classList.toggle('on', m==='fc'); renderMap(); }
+
 function renderTable(){
   $('tbl').innerHTML = '';
   for(const f of all){
@@ -100,6 +154,8 @@ async function init(){
     $('city').innerHTML = cities.map(c => `<option${c==='Dhaka'?' selected':''}>${c}</option>`).join('');
     $('city').onchange = e => showCity(e.target.value);
     renderTable();
+    renderMap();
+    $('mNow').onclick = () => setMapMode('now'); $('mFc').onclick = () => setMapMode('fc'); $('onlyDist').onchange = renderMap;
     await showCity($('city').value);
     const h = await getJSON('api/health.json');
     $('status').textContent = '';

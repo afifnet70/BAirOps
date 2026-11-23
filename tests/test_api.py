@@ -26,8 +26,9 @@ def client(bundle_path, monkeypatch):
 def test_endpoints(client):
     assert client.get("/health").json()["status"] == "ok"
     assert client.get("/model-info").json()["kind"] == "Ensemble-Stacking"
+    from bairops.cities import CITIES
     cities = client.get("/cities").json()
-    assert len(cities) == 30
+    assert len(cities) == len(CITIES)
     allf = client.get("/forecast/all").json()
     assert len(allf) == 3
     r = client.get("/forecast", params={"city": allf[0]["city"]})

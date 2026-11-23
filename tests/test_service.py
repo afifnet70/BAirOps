@@ -21,7 +21,7 @@ def test_refresh_and_forecast(service):
     assert h["status"] == "ok" and h["model_version"] == "3" and h["cities_with_forecast"] == 3
     name = service.all_forecasts()[0]["city"]
     f = service.forecast(name)
-    for k in ("aqi_now", "aqi_forecast", "interval_90", "category_forecast", "target_time_local", "history_7d"):
+    for k in ("aqi_now", "aqi_forecast", "interval_90", "category_forecast", "target_time_local", "history_7d", "lat", "lon"):
         assert k in f
     assert len(f["history_7d"]) == 168
     assert f["interval_90"][0] <= f["aqi_forecast"] <= f["interval_90"][1]
