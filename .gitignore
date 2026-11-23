@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+assets/
+artifacts/
+reports/
+mlruns/
+*.joblib
+.dvc/config.local

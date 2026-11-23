@@ -1,0 +1,12 @@
+.git
+.github
+.dvc
+data
+tests
+scripts
+monitoring
+reports
+artifacts
+assets
+**/__pycache__
+*.joblib
