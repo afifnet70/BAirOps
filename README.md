@@ -1,4 +1,4 @@
-# BAirOps — End-to-end MLOps for near real-time AQI forecasting in Bangladesh
+# BAirOps — End-to-end MLOps for AQI forecasting in Bangladesh
 
 BAirOps forecasts the US Air Quality Index **24 hours ahead** for 30 Bangladeshi locations with a
 **stacked ensemble** (Random Forest + XGBoost + LightGBM + CatBoost, non-negative linear meta-learner),
