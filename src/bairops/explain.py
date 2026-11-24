@@ -172,7 +172,8 @@ def summarise(drivers, base, forecast):
         s += ", mainly because of " + " and ".join(f"{_low(d['name'])} ({_fmt(d['effect'])})" for d in lead)
     other = down if diff >= 0 else up[:1]
     if other:
-        s += f". {_low(other[0]['name']).capitalize() if not other[0]['name'][:2].isupper() else _low(other[0]['name'])} pulls it {'down' if other[0]['effect'] < 0 else 'up'} ({_fmt(other[0]['effect'])})"
+        nm = other[0]["name"].split(" (")[0]
+        s += f". {nm} pulls it {'down' if other[0]['effect'] < 0 else 'up'} ({_fmt(other[0]['effect'])})"
     return s + "."
 
 
