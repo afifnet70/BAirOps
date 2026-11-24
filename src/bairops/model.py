@@ -36,6 +36,10 @@ class BAirOpsModel:
         return cls(joblib.load(path), version=version, source=source)
 
     def predict(self, X):
+        return np.clip(self.predict_raw(X), 0, 500)
+
+    def predict_raw(self, X):
+        """Ensemble output before clipping to the AQI range (used to check the explanations)."""
         Xs = X[self.features]
         P = np.column_stack([self.bundle["models"][n].predict(Xs) for n in self.order])
         if self.kind == "single":
@@ -46,7 +50,7 @@ class BAirOpsModel:
             out = P @ np.asarray(self.bundle["weights"])
         else:                                          # Ensemble-Stacking (proposed model)
             out = self.bundle["stacker"].predict(P)
-        return np.clip(np.asarray(out, float), 0, 500)
+        return np.asarray(out, float)
 
     def interval(self, yhat):
         q = self.pi_halfwidth if np.isfinite(self.pi_halfwidth) else 0.0

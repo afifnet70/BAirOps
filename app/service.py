@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from bairops.cities import CITIES, CITY_BY_ID, CITY_BY_NAME  # noqa: E402
 from bairops.config import PARAMS  # noqa: E402
 from bairops.data import clean  # noqa: E402
+from bairops.explain import explain_rows  # noqa: E402
 from bairops.features import SEASON_NAMES, build_features  # noqa: E402
 from bairops.metrics import aqi_label  # noqa: E402
 from bairops.model import BAirOpsModel  # noqa: E402
@@ -39,6 +40,7 @@ class Service:
         self.model = None
         self.forecasts, self.history = {}, {}
         self.last_refresh, self.last_error = None, None
+        self.explain_global, self.explain_check = None, None
         self.started = time.time()
         self._lock = threading.Lock()
 
@@ -82,6 +84,14 @@ class Service:
         yhat = self.model.predict(Xl)
         ms = (time.perf_counter() - t0) * 1000 / max(len(Xl), 1)
         lo, hi = self.model.interval(yhat)
+        expl, self.explain_global, self.explain_check = [None] * len(Xl), None, None
+        try:                                           # explainable AI; never blocks serving
+            t1 = time.perf_counter()
+            expl, self.explain_global, self.explain_check = explain_rows(self.model, Xl)
+            print(f"[explain] {len(expl)} forecasts explained in {time.perf_counter() - t1:.1f}s, "
+                  f"max additivity error {self.explain_check:.2e}", flush=True)
+        except Exception as e:
+            print(f"[explain] skipped: {e!r}", flush=True)
         fc, hist = {}, {}
         for i, r in ml.iterrows():
             name = r["city_name"]
@@ -97,7 +107,7 @@ class Service:
                 "aqi_forecast": round(float(yhat[i]), 1), "category_forecast": aqi_label(yhat[i]),
                 "interval_90": [round(float(lo[i]), 1), round(float(hi[i]), 1)],
                 "season": SEASON_NAMES[int(r["season"])], "model_version": self.model.version,
-                "model_latency_ms": round(ms, 3)}
+                "model_latency_ms": round(ms, 3), "explanation": expl[i]}
             h = data[data["city_id"] == r["city_id"]].tail(168)
             hist[name.lower()] = [{"t": str(t + pd.Timedelta(hours=TZ)), "aqi": (None if pd.isna(a) else round(float(a), 1))}
                                   for t, a in zip(h["datetime"], h["aqi"])]

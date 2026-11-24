@@ -47,13 +47,19 @@ info = svc.model.info()
 health = dict(svc.health(), generated_utc=svc.last_refresh, run_seconds=round(time.time() - t0, 1),
               serving="batch (hourly GitHub Actions job)", git_sha=os.environ.get("GITHUB_SHA", "local")[:7])
 with open(os.path.join(out_api, "forecasts.json"), "w") as fh:
-    json.dump({"generated_utc": svc.last_refresh, "model_version": svc.model.version, "forecasts": full}, fh)
+    json.dump({"generated_utc": svc.last_refresh, "model_version": svc.model.version,
+               "explain_global": svc.explain_global, "forecasts": full}, fh)
 with open(os.path.join(out_api, "model-info.json"), "w") as fh:
     json.dump(info, fh, indent=2)
 with open(os.path.join(out_api, "health.json"), "w") as fh:
     json.dump(health, fh, indent=2)
 shutil.copy(os.path.join(ROOT, "site_template", "index.html"), os.path.join(a.out, "index.html"))
 open(os.path.join(a.out, ".nojekyll"), "w").close()
+# explainable-AI log (used for the paper): global driver ranking and four demonstration cities
+print("XAI_GLOBAL " + json.dumps(svc.explain_global))
+for f in full:
+    if f["city"] in ("Dhaka", "Chittagong", "Rajshahi", "Sylhet") and f.get("explanation"):
+        print("XAI_CITY " + json.dumps({"city": f["city"], "now": f["aqi_now"], **f["explanation"]}))
 print(f"published {len(full)} city forecasts with model v{svc.model.version} in {time.time() - t0:.1f}s")
 if os.environ.get("GITHUB_STEP_SUMMARY"):
     with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
