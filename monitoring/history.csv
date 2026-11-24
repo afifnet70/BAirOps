@@ -1,3 +1,4 @@
 date,model_version,window_end,n_forecasts,live_RMSE,live_MAE,live_R2,live_Category_Acc_%,reference_test_RMSE,psi_aqi,psi_pm2_5,alert_performance,alert_drift,live_persistence_RMSE
 2026-11-23 17:31,1,2026-11-23 17:00:00,5040,30.953,22.414,0.7682,62.88,16.278,0.9809,0.5541,True,True,43.035
 2026-11-23 18:33,1,2026-11-23 18:00:00,13776,31.524,23.164,0.7567,63.55,16.278,0.8817,0.4764,True,True,43.813
+2026-11-24 10:09,1,2026-11-24 10:00:00,13776,28.394,20.639,0.7361,66.86,16.278,0.6277,0.3224,True,True,43.551
