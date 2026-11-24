@@ -100,10 +100,8 @@
   </div>
 
   <section class="xai" id="xai" style="display:none">
-    <div class="xhead"><span class="xbadge">XAI</span><span class="xtitle">Why this forecast?</span>
-      <span class="xsub" id="xsub"></span></div>
-    <div class="xsum" id="xsum"></div>
-    <div class="xlab">From the typical level to tomorrow's forecast</div>
+    <div class="xhead"><span class="xbadge">XAI</span><span class="xtitle">Top features</span></div>
+    <div class="xlab" style="margin-top:14px">From the typical level to tomorrow's forecast</div>
     <div class="force" id="force"></div>
     <div class="xgrid">
       <div><div class="xlab">What drives the forecast</div><div id="xdrivers"></div></div>
@@ -142,8 +140,6 @@ function renderXAI(f){
   const x = f.explanation, box = $('xai');
   if(!x){ box.style.display = 'none'; return; }
   box.style.display = '';
-  $('xsub').textContent = `What is pushing tomorrow's AQI in ${f.city} up or down`;
-  $('xsum').textContent = x.summary;
   // force strip
   const ds = x.drivers.filter(d => Math.abs(d.effect) >= 0.5);
   const pos = ds.filter(d => d.effect > 0), neg = ds.filter(d => d.effect < 0);
