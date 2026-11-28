@@ -1,16 +1,16 @@
 {
-  "date": "2026-11-27 08:51",
+  "date": "2026-11-28 08:09",
   "model_version": "1",
-  "window_end": "2026-11-27 08:00:00",
+  "window_end": "2026-11-28 08:00:00",
   "n_forecasts": 13776,
-  "live_RMSE": 24.401,
-  "live_MAE": 18.409,
-  "live_R2": 0.7279,
-  "live_Category_Acc_%": 69.24,
+  "live_RMSE": 21.439,
+  "live_MAE": 16.486,
+  "live_R2": 0.7688,
+  "live_Category_Acc_%": 70.63,
   "reference_test_RMSE": 16.278,
-  "psi_aqi": 0.3707,
-  "psi_pm2_5": 0.1495,
+  "psi_aqi": 0.1835,
+  "psi_pm2_5": 0.0528,
   "alert_performance": true,
   "alert_drift": false,
-  "live_persistence_RMSE": 37.658
+  "live_persistence_RMSE": 31.375
 }
